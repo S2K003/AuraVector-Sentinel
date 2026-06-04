@@ -34,7 +34,6 @@ func main() {
 	fmt.Println("[+] Baseline Locked. System Armed.")
 	
 	// Define our mathematical boundary. For normalized vectors, > 10.0 usually implies high deviation.
-	// You can adjust this based on testing!
 	const AnomalyThreshold = 12.0 
 
 	telemetryChan := make(chan telemetry.EnterpriseLog, 1000)
@@ -59,8 +58,18 @@ func main() {
 			// 3. Trigger the Trap
 			if distance > AnomalyThreshold {
 				fmt.Printf("[!] ZERO-DAY ANOMALY DETECTED! (Distance: %.2f)\n", distance)
-				fmt.Printf("    Reason: Mathematical deviation exceeds threshold of %.2f\n", AnomalyThreshold)
-				fmt.Println("    Action: Initiating Block & Incident Report...")
+				fmt.Println("    Action: Blocking IP & Generating AI Incident Report...")
+				
+				// TRIGGER PILLAR 4: AUTOMATED SOC ANALYSIS
+				report, err := engine.GenerateIncidentReport(semanticContext, distance)
+				if err != nil {
+					fmt.Println("    [!] Failed to generate report:", err)
+				} else {
+					fmt.Println("\n================= AI INCIDENT REPORT =================")
+					fmt.Println(report)
+					fmt.Println("======================================================")
+				}
+
 			} else {
 				fmt.Printf("[OK] Traffic Normal. (Distance: %.2f)\n", distance)
 			}
