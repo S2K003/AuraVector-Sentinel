@@ -24,38 +24,32 @@ func (r *responseRecorder) Write(b []byte) (int, error) {
 	return size, err
 }
 
-// ThreatInterceptor is an HTTP middleware that extracts telemetry in real-time.
-func ThreatInterceptor(next http.Handler, telemetryChan chan<- EnterpriseLog) http.Handler {
+// ThreatEvaluator is a callback function that evaluates a log and returns (isThreat, fakeResponse)
+type ThreatEvaluator func(log EnterpriseLog) (bool, string)
+
+// ActiveThreatInterceptor evaluates threats BEFORE they hit the real web server.
+func ActiveThreatInterceptor(next http.Handler, evaluate ThreatEvaluator) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		start := time.Now()
-
-		// 1. Wrap the response writer to spy on the status code and bytes
-		rec := &responseRecorder{ResponseWriter: w, statusCode: http.StatusOK}
-
-		// 2. Serve the actual HTTP request
-		next.ServeHTTP(rec, req)
-
-		// 3. Calculate response time
-		duration := time.Since(start).Milliseconds()
-
-		// 4. Generate the telemetry entry
+		// Capture inbound metadata (Status/Bytes are 0 because the response hasn't happened yet)
 		logEntry := EnterpriseLog{
-			Timestamp:    time.Now().UTC().Format(time.RFC3339),
-			SourceIP:     req.RemoteAddr,
-			Method:       req.Method,
-			Path:         req.URL.Path,
-			StatusCode:   rec.statusCode,
-			BytesSent:    rec.bytesSent,
-			UserAgent:    req.UserAgent(),
-			ResponseTime: int(duration),
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
+			SourceIP:  req.RemoteAddr,
+			Method:    req.Method,
+			Path:      req.URL.Path,
+			UserAgent: req.UserAgent(),
 		}
 
-		// 5. Push to the AI engine asynchronously
-		select {
-		case telemetryChan <- logEntry:
-			// Successfully handed off to the AI pipeline
-		default:
-			// If the channel is full (AI is lagging), drop the telemetry to ensure the web server never crashes.
+		// 1. Evaluate the threat mathematically in real-time
+		isThreat, fakeResponse := evaluate(logEntry)
+
+		if isThreat {
+			// THE TARPIT: Feed them the fake AI response, masquerading as a success
+			w.WriteHeader(http.StatusOK) // Return a 200 OK to trick automated scanners!
+			w.Write([]byte(fakeResponse))
+			return
 		}
+
+		// 2. Normal traffic flows through to the real backend safely
+		next.ServeHTTP(w, req)
 	})
 }

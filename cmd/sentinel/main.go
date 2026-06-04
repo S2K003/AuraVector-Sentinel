@@ -11,84 +11,66 @@ import (
 )
 
 func main() {
-	fmt.Println("[*] Booting Aura-Sentinel Zero-Day Threat Hunter...")
+	fmt.Println("[*] Booting Aura-Sentinel AI Tarpit & Active WAF...")
 
-	// 1. Establish the Baseline "Normal" Traffic Signature
-	// In a production system, this would be the average of 10,000 normal logs.
 	fmt.Println("[*] Training AI Baseline Profile...")
 	normalLog := telemetry.EnterpriseLog{
-		Timestamp:    time.Now().UTC().Format(time.RFC3339),
-		SourceIP:     "127.0.0.1",
-		Method:       "GET",
-		Path:         "/",
-		StatusCode:   200,
-		BytesSent:    500,
-		UserAgent:    "Mozilla/5.0",
-		ResponseTime: 45,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		SourceIP:  "127.0.0.1",
+		Method:    "GET",
+		Path:      "/",
+		UserAgent: "Mozilla/5.0",
 	}
-	baselineVector, err := engine.GenerateSignature(normalLog.FlattenForAI())
-	if err != nil {
-		fmt.Printf("[!] Fatal: Could not establish baseline: %v\n", err)
-		return
-	}
+	baselineVector, _ := engine.GenerateSignature(normalLog.FlattenForAI())
 	fmt.Println("[+] Baseline Locked. System Armed.")
 	
-	// Define our mathematical boundary. For normalized vectors, > 10.0 usually implies high deviation.
 	const AnomalyThreshold = 12.0 
 
-	telemetryChan := make(chan telemetry.EnterpriseLog, 1000)
+	// 1. The Active Threat Evaluator (Inline Trap)
+	evaluator := func(log telemetry.EnterpriseLog) (bool, string) {
+		semanticContext := log.FlattenForAI()
+		
+		// Convert inbound request to Math
+		vector, err := engine.GenerateSignature(semanticContext)
+		if err != nil {
+			return false, ""
+		}
 
-	// Background AI Pipeline (The Trap)
-	go func() {
-		for logEntry := range telemetryChan {
-			fmt.Println("\n-------------------------------------------------")
-			fmt.Printf("[+] Intercepted: %s %s from %s\n", logEntry.Method, logEntry.Path, logEntry.SourceIP)
+		// Calculate Distance
+		distance, _ := engine.EuclideanDistance(baselineVector, vector)
+
+		// Trigger the Tarpit
+		if distance > AnomalyThreshold {
+			fmt.Printf("\n[!] ZERO-DAY TRAPPED! (Distance: %.2f) Path: %s\n", distance, log.Path)
+			fmt.Println("    Action: Rerouting Hacker to GenAI Tarpit...")
 			
-			semanticContext := logEntry.FlattenForAI()
-			
-			// 1. Generate Signature
-			vector, err := engine.GenerateSignature(semanticContext)
+			// Generate Fake Environment
+			fakeResponse, err := engine.GenerateHoneypotResponse(semanticContext, log.Path)
 			if err != nil {
-				continue
+				return true, "{\"error\": \"database timeout\"}"
 			}
-
-			// 2. Calculate Distance to Baseline
-			distance, _ := engine.EuclideanDistance(baselineVector, vector)
-
-			// 3. Trigger the Trap
-			if distance > AnomalyThreshold {
-				fmt.Printf("[!] ZERO-DAY ANOMALY DETECTED! (Distance: %.2f)\n", distance)
-				fmt.Println("    Action: Blocking IP & Generating AI Incident Report...")
-				
-				// TRIGGER PILLAR 4: AUTOMATED SOC ANALYSIS
-				report, err := engine.GenerateIncidentReport(semanticContext, distance)
-				if err != nil {
-					fmt.Println("    [!] Failed to generate report:", err)
-				} else {
-					fmt.Println("\n================= AI INCIDENT REPORT =================")
-					fmt.Println(report)
-					fmt.Println("======================================================")
-				}
-
-			} else {
-				fmt.Printf("[OK] Traffic Normal. (Distance: %.2f)\n", distance)
-			}
-			fmt.Println("-------------------------------------------------")
+			
+			fmt.Println("    [Tarpit] Generating fake vulnerability payload...")
+			fmt.Println("    [Tarpit] Delaying response by 3 seconds to drain attacker threads...")
+			
+			// Tarpit delay: Waste the hacker's connection threads
+			time.Sleep(3 * time.Second)
+			return true, fakeResponse
 		}
-	}()
 
+		fmt.Printf("[OK] Traffic Normal. (Distance: %.2f)\n", distance)
+		return false, ""
+	}
+
+	// 2. The Real Web Application
 	backendApp := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/admin" {
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte("401 - Unauthorized Access"))
-			return
-		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Welcome to the secure web server!"))
+		w.Write([]byte("Welcome to the secure web server! Your real data is here."))
 	})
 
-	secureProxy := telemetry.ThreatInterceptor(backendApp, telemetryChan)
+	// 3. Wrap the App with the Active Interceptor
+	secureProxy := telemetry.ActiveThreatInterceptor(backendApp, evaluator)
 
-	fmt.Println("[*] Sentinel WAF listening on port 8080...")
+	fmt.Println("[*] Sentinel Tarpit listening on port 8080...")
 	http.ListenAndServe(":8080", secureProxy)
 }
