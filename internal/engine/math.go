@@ -1,43 +1,24 @@
 // internal/engine/math.go
 package engine
 
-import "math"
+import (
+	"fmt"
+	"math"
+)
 
-// CosineSimilarity calculates the cosine similarity between two float32 vectors.
-func CosineSimilarity(a, b []float32) float32 {
-	if len(a) != len(b) || len(a) == 0 {
-		return 0.0
+// EuclideanDistance calculates the straight-line distance between two 768-D vectors.
+// The larger the result, the more semantically different the two web requests are.
+func EuclideanDistance(v1, v2 []float32) (float64, error) {
+	if len(v1) != len(v2) {
+		// FIX: Return 0 for the float, and a proper Go error for the error interface
+		return 0, fmt.Errorf("dimension mismatch: vector 1 is %d-D, vector 2 is %d-D", len(v1), len(v2))
 	}
 
-	var dotProduct, normA, normB float32
-	for i := 0; i < len(a); i++ {
-		dotProduct += a[i] * b[i]
-		normA += a[i] * a[i]
-		normB += b[i] * b[i]
+	var sum float64
+	for i := 0; i < len(v1); i++ {
+		diff := float64(v1[i] - v2[i])
+		sum += diff * diff
 	}
 
-	if normA == 0 || normB == 0 {
-		return 0.0
-	}
-
-	// We cast to float64 for the Sqrt to utilize standard math libraries, 
-	// then back to float32 for our unified schema.
-	return dotProduct / (float32(math.Sqrt(float64(normA))) * float32(math.Sqrt(float64(normB))))
-}
-
-// SquaredEuclidean calculates the squared Euclidean distance. 
-// We skip the final square root calculation for performance, as squared distances 
-// sort exactly the same as true Euclidean distances.
-func SquaredEuclidean(a, b []float32) float32 {
-	if len(a) != len(b) || len(a) == 0 {
-		return 0.0
-	}
-
-	var distance float32
-	for i := 0; i < len(a); i++ {
-		diff := a[i] - b[i]
-		distance += diff * diff
-	}
-
-	return distance
+	return math.Sqrt(sum), nil
 }
