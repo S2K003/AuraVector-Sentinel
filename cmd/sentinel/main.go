@@ -11,66 +11,81 @@ import (
 )
 
 func main() {
-	fmt.Println("[*] Booting Aura-Sentinel AI Tarpit & Active WAF...")
+	fmt.Println("[*] Booting Aura-Sentinel Edge-WAF & SOC Telemetry...")
 
-	fmt.Println("[*] Training AI Baseline Profile...")
 	normalLog := telemetry.EnterpriseLog{
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		SourceIP:  "127.0.0.1",
 		Method:    "GET",
 		Path:      "/",
-		UserAgent: "Mozilla/5.0",
 	}
 	baselineVector, _ := engine.GenerateSignature(normalLog.FlattenForAI())
-	fmt.Println("[+] Baseline Locked. System Armed.")
-	
 	const AnomalyThreshold = 12.0 
 
-	// 1. The Active Threat Evaluator (Inline Trap)
+	// 1. Initialize our UI Manager & Edge Blocklist
+	socManager := telemetry.NewSOCManager()
+
+	// 2. Start the Telemetry Stream for Next.js on port 8081
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/soc/stream", socManager)
+		fmt.Println("[*] Live SOC Telemetry Stream running on port 8081")
+		http.ListenAndServe(":8081", mux)
+	}()
+
+	// 3. The Active Threat Evaluator
 	evaluator := func(log telemetry.EnterpriseLog) (bool, string) {
-		semanticContext := log.FlattenForAI()
 		
-		// Convert inbound request to Math
-		vector, err := engine.GenerateSignature(semanticContext)
-		if err != nil {
-			return false, ""
+		// ==========================================
+		// FAST PATH: Check Edge Blocklist O(1)
+		// ==========================================
+		if socManager.IsBlocked(log.SourceIP) {
+			fmt.Printf("[X] Blocked IP %s at the Edge (Bypassed AI)\n", log.SourceIP)
+			// Returning true with an empty string drops the connection instantly
+			return true, "403 - Connection Terminated by Aura-Sentinel Edge"
 		}
 
-		// Calculate Distance
+		// ==========================================
+		// SLOW PATH: AI Vector Math & Trap
+		// ==========================================
+		semanticContext := log.FlattenForAI()
+		vector, err := engine.GenerateSignature(semanticContext)
+		if err != nil { return false, "" }
+
 		distance, _ := engine.EuclideanDistance(baselineVector, vector)
 
-		// Trigger the Tarpit
 		if distance > AnomalyThreshold {
-			fmt.Printf("\n[!] ZERO-DAY TRAPPED! (Distance: %.2f) Path: %s\n", distance, log.Path)
-			fmt.Println("    Action: Rerouting Hacker to GenAI Tarpit...")
+			fmt.Printf("\n[!] ZERO-DAY TRAPPED! Path: %s\n", log.Path)
 			
-			// Generate Fake Environment
-			fakeResponse, err := engine.GenerateHoneypotResponse(semanticContext, log.Path)
-			if err != nil {
-				return true, "{\"error\": \"database timeout\"}"
-			}
+			// 1. Block the IP instantly at the Edge for future requests
+			socManager.BlockIP(log.SourceIP)
 			
-			fmt.Println("    [Tarpit] Generating fake vulnerability payload...")
-			fmt.Println("    [Tarpit] Delaying response by 3 seconds to drain attacker threads...")
+			// 2. Asynchronously generate AI report & push to Next.js UI
+			go func() {
+				report, _ := engine.GenerateIncidentReport(semanticContext, distance)
+				socManager.Notifier <- telemetry.Alert{
+					IP:       log.SourceIP,
+					Path:     log.Path,
+					Distance: distance,
+					Report:   report,
+				}
+			}()
 			
-			// Tarpit delay: Waste the hacker's connection threads
+			// 3. Tarpit Response (Waste their time once, then never again)
+			fakeResponse, _ := engine.GenerateHoneypotResponse(semanticContext, log.Path)
 			time.Sleep(3 * time.Second)
 			return true, fakeResponse
 		}
-
-		fmt.Printf("[OK] Traffic Normal. (Distance: %.2f)\n", distance)
 		return false, ""
 	}
 
-	// 2. The Real Web Application
+	// 4. Wrap App and Start WAF on 8080
 	backendApp := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Welcome to the secure web server! Your real data is here."))
+		w.Write([]byte("Welcome to the secure web server!"))
 	})
-
-	// 3. Wrap the App with the Active Interceptor
 	secureProxy := telemetry.ActiveThreatInterceptor(backendApp, evaluator)
 
-	fmt.Println("[*] Sentinel Tarpit listening on port 8080...")
+	fmt.Println("[*] Sentinel WAF listening on port 8080...")
 	http.ListenAndServe(":8080", secureProxy)
 }
