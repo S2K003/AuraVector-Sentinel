@@ -133,28 +133,6 @@ Invoke-WebRequest -Uri "http://localhost:8080/admin/config.php" `
 
 ---
 
-## 📁 Project Structure
-
-```
-Aura-Sentinel/
-├── cmd/
-│   └── sentinel/
-│       └── main.go        # Entrypoint
-├── internal/
-│   ├── waf/               # Core WAF middleware & routing logic
-│   ├── detector/          # Embedding + Euclidean anomaly engine
-│   ├── tarpit/            # LLaMA-powered honeypot generator
-│   ├── blocklist/         # sync.Map edge-blocking cache
-│   └── telemetry/         # SSE broker & event streaming
-├── ui/                    # Next.js SOC Dashboard
-│   ├── app/
-│   └── components/
-├── go.mod
-└── README.md
-```
-
----
-
 ## 🔒 Security & Disclaimer
 
 This project is built for **educational and research purposes**. The honeypot and tarpit modules are designed to study attacker behaviour in controlled environments. Do not deploy against production traffic without a thorough security review.
